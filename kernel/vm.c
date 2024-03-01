@@ -296,41 +296,61 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
-int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
-{
+/*
+ * uvmcopy()
+ * Copies the virtual memory from one page table to another using Copy-On-Write (COW).
+ * This function iterates over the address space of the old page table and for each page,
+ * if it is writable, it marks the page as read-only and sets the Copy-On-Write (COW) flag.
+ * This allows the pages to be shared between the parent and the child processes until 
+ * one of them writes to the page, triggering a page fault to handle the copy.
+ */
+int uvmcopy(pagetable_t old, pagetable_t new, uint64 sz) {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
   char *mem;
 
+  // iterate through each page in the old page table.
   for(i = 0; i < sz; i += PGSIZE){
+    // walk the old page table to find the page table entry for the current page.
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      panic("uvmcopy: pte should exist"); // panic if the PTE doesn't exist.
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
+      panic("uvmcopy: page not present"); // panic if the page is not present.
+      
+    pa = PTE2PA(*pte); // extract the physical address from the PTE.
+    flags = PTE_FLAGS(*pte); // extract the flags from the PTE.
+
+    // allocate a new page to copy the contents.
     if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+      goto err; // go to error handling if memory allocation fails.
+    memmove(mem, (char*)pa, PGSIZE); // copy the contents of the page.
+
+    // map the new memory page to the new page table.
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+      kfree(mem); // free the newly allocated memory if mapping fails.
+      goto err; // go to error handling if mapping fails.
+    }
+
+    // if the page is writable, adjust the flags for Copy-On-Write.
+    if(flags & PTE_W){
+      flags = (flags & (~PTE_W)) | PTE_COW; // clear write permission, set COW flag.
+      *pte = PA2PTE(pa) | flags; // update the old page table entry with new flags.
+    }
+
+    // map the page as read-only in the new page table.
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      goto err; // go to error handling if mapping fails.
     }
   }
+
   return 0;
 
  err:
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
+
 
 // mark a PTE invalid for user access.
 // used by exec for the user stack guard page.
