@@ -16,6 +16,44 @@ void kernelvec();
 
 extern int devintr();
 
+// function to handle page faults, takes in a virtual address and a page table.
+// 
+int page_fault_handling(void* va, pagetable_t pagetable){
+  struct proc* p = myproc();
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+  // check if the virtual address is beyond the maximum or within the guard page range
+  if ((uint64)va >= MAXVA || ((uint64)va >= PGROUNDDOWN(p->trapframe->sp) - PGSIZE &&
+     (uint64)va <= PGROUNDDOWN(p->trapframe->sp))) {
+    return -2; //invalid
+  }
+  va = (void*)PGROUNDDOWN((uint64)va); // align the address to page boundary
+  pte = walk(pagetable, (uint64)va, 0); // find the page table entry for the address
+  if (pte == 0) {
+    return -1; //not found
+  }
+  pa = PTE2PA(*pte); // get physical address from the PTE
+  if (pa == 0) {
+    return -1; //invalid
+  }
+  flags = PTE_FLAGS(*pte); // extract flags from the PTE
+  
+  // check if the page is marked as COW
+  if (flags & PTE_C) {
+    flags = (flags | PTE_W) & (~PTE_C); // change the page to writable and clear the COW flag
+    char *mem = kalloc(); // allocate a new page
+    if (mem == 0) {
+      return -1; // memory allocation failed
+    }
+    memmove(mem, (void*)pa, PGSIZE); // copy the content of the old page to the new page
+    *pte = PA2PTE((uint64)mem) | flags; // update the PTE to point to the new page
+    kfree((void*)pa); // free the old page
+    return 0;
+  }
+  return 0;
+}
+
 void
 trapinit(void)
 {
@@ -33,55 +71,61 @@ trapinithart(void)
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
 //
-void
-usertrap(void)
-{
-  int which_dev = 0;
+void 
+usertrap(void) {
+    int which_dev = 0;
 
-  if((r_sstatus() & SSTATUS_SPP) != 0)
-    panic("usertrap: not from user mode");
+    if ((r_sstatus() & SSTATUS_SPP) != 0)
+        panic("usertrap: not from user mode");
 
-  // send interrupts and exceptions to kerneltrap(),
-  // since we're now in the kernel.
-  w_stvec((uint64)kernelvec);
+    // send interrupts and exceptions to kerneltrap(),
+    // since we're now in the kernel.
+    w_stvec((uint64)kernelvec);
 
-  struct proc *p = myproc();
-  
-  // save user program counter.
-  p->trapframe->epc = r_sepc();
-  
-  if(r_scause() == 8){
-    // system call
+    struct proc *p = myproc();
+    
+    // save user program counter.
+    p->trapframe->epc = r_sepc();
+    
+    if (r_scause() == 8) {
+        // system call
 
-    if(killed(p))
-      exit(-1);
+        if (killed(p))
+            exit(-1);
 
-    // sepc points to the ecall instruction,
-    // but we want to return to the next instruction.
-    p->trapframe->epc += 4;
+        // sepc points to the ecall instruction,
+        // but we want to return to the next instruction.
+        p->trapframe->epc += 4;
 
-    // an interrupt will change sepc, scause, and sstatus,
-    // so enable only now that we're done with those registers.
-    intr_on();
+        // an interrupt will change sepc, scause, and sstatus,
+        // so enable only now that we're done with those registers.
+        intr_on();
 
-    syscall();
-  } else if((which_dev = devintr()) != 0){
-    // ok
-  } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    setkilled(p);
-  }
+        syscall();
+    } else if ((which_dev = devintr()) != 0) {
+        // device interrupt handled, nothing else to do.
+    } else if (r_scause() == 15 || r_scause() == 13) { // check if the cause is a page fault (load or store)
+        int res = page_fault_handler((void*)r_stval(), p->pagetable); // handle the page fault
+        if (res == -1 || res == -2) {
+            p->killed = 1; // kill the process if the page fault was invalid or couldn't be handled
+        }
+    } else {
+        // Unexpected cause
+        printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+        printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+        setkilled(p);
+    }
 
-  if(killed(p))
-    exit(-1);
+    if (killed(p))
+        exit(-1);
 
-  // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
+    // give up the CPU if this is a timer interrupt.
+    if (which_dev == 2)
+        yield();
 
-  usertrapret();
+    usertrapret();
 }
+
 
 //
 // return to user space
