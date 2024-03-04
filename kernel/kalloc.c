@@ -23,6 +23,12 @@ struct {
   struct run *freelist;
 } kmem;
 
+//struct for page references
+struct{
+  struct spinlock lock;
+  int count[PGROUNDUP(PHYSTOP)>>12]; //2^12 == 4096, aka 4k bytes aka size of page.
+}page_ref;
+
 void
 kinit()
 {

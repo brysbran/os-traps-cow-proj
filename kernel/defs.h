@@ -147,6 +147,8 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
+//added page fault handling for cow
+int             page_fault_handling(void*, pagetable_t);
 
 // uart.c
 void            uartinit(void);

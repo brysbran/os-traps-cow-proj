@@ -40,8 +40,8 @@ int page_fault_handling(void* va, pagetable_t pagetable){
   flags = PTE_FLAGS(*pte); // extract flags from the PTE
   
   // check if the page is marked as COW
-  if (flags & PTE_C) {
-    flags = (flags | PTE_W) & (~PTE_C); // change the page to writable and clear the COW flag
+  if (flags & PTE_COW) {
+    flags = (flags | PTE_W) & (~PTE_COW); // change the page to writable and clear the COW flag
     char *mem = kalloc(); // allocate a new page
     if (mem == 0) {
       return -1; // memory allocation failed
@@ -105,7 +105,7 @@ usertrap(void) {
     } else if ((which_dev = devintr()) != 0) {
         // device interrupt handled, nothing else to do.
     } else if (r_scause() == 15 || r_scause() == 13) { // check if the cause is a page fault (load or store)
-        int res = page_fault_handler((void*)r_stval(), p->pagetable); // handle the page fault
+        int res = page_fault_handling((void*)r_stval(), p->pagetable); // handle the page fault
         if (res == -1 || res == -2) {
             p->killed = 1; // kill the process if the page fault was invalid or couldn't be handled
         }
