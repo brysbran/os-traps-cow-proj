@@ -7,6 +7,7 @@
 #include "syscall.h"
 #include "defs.h"
 
+
 // Fetch the uint64 at addr from the current process.
 int
 fetchaddr(uint64 addr, uint64 *ip)
@@ -16,6 +17,10 @@ fetchaddr(uint64 addr, uint64 *ip)
     return -1;
   if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
+
+  p->ticks = ticks;
+  p->sighandler = handler;
+
   return 0;
 }
 
@@ -143,5 +148,14 @@ syscall(void)
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
+  }
+
+  if (num == SYS_sigalarm)
+  {
+    if(argint(0, &ticks) < 0 || argaddr(1, (uint64*)&handler) < 0)
+      return -1;
+    p->ticks = ticks;
+    p->handler = (sighandler_t)handler;
+
   }
 }
