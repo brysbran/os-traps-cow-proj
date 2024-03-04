@@ -44,6 +44,37 @@ void init_page_ref(){
   release(&page_ref.lock);
 }
 
+//when COW copies a page for a process, need to update 
+// the reference count from the original page that was being pointed to from
+//both processes.
+void dec_page_ref(){
+ acquire(&page_ref.lock);
+ //if count is zero, memory mismanaged.
+ if(page_ref.count[(uint64) pa >> 12] <= 0){
+  panic("dec_page_ref");
+ }
+
+//decrement reference count
+ page_ref.count[(uint64)pa >> 12] -= 1;
+ release(&page_ref.lock);
+}
+
+//when fork is called, instead of all pages being copied,
+//the original processes pages are shared by Proc A and B, and 
+//we use this reference incrementer to keep track of how many
+//procs are pointing to a given page.
+void inc_page_ref(){
+
+}
+
+//return the reference count of a page,
+//includes error checking if memory was mismanaged
+//
+void get_page_ref(){
+
+}
+
+
 void
 kinit()
 {
