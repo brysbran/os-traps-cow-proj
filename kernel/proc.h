@@ -105,8 +105,9 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
-  int alarmticks;
-  int alarminterval;
-  void (*alarmhandler)();
+  //trap additions
+  int alarm_ticks;
+  int alarm_left;
+  void (*alarm_handler)();
 
 };

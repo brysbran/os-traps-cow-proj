@@ -7,7 +7,6 @@
 #include "syscall.h"
 #include "defs.h"
 
-
 // Fetch the uint64 at addr from the current process.
 int
 fetchaddr(uint64 addr, uint64 *ip)
@@ -17,10 +16,6 @@ fetchaddr(uint64 addr, uint64 *ip)
     return -1;
   if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
-
-  p->ticks = ticks;
-  p->sighandler = handler;
-
   return 0;
 }
 
@@ -107,6 +102,9 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 
+extern uint64 sys_sigalarm(void);
+extern uint64 sys_sigreturn(void);
+
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
 static uint64 (*syscalls[])(void) = {
@@ -144,18 +142,21 @@ syscall(void)
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
     p->trapframe->a0 = syscalls[num]();
-  } else {
+  } 
+  else if (num == SYS_sigalarm)
+  {
+    int ticks;
+    void (*handler)();
+    argint(0, &ticks);
+    argstr(1, (void*)&handler, sizeof(handler));
+    if(ticks < 0 ||  handler < 0)
+      return;
+    p->alarm_ticks = ticks;
+    p->alarm_handler = handler;
+  }
+  else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
     p->trapframe->a0 = -1;
-  }
-
-  if (num == SYS_sigalarm)
-  {
-    if(argint(0, &ticks) < 0 || argaddr(1, (uint64*)&handler) < 0)
-      return -1;
-    p->ticks = ticks;
-    p->handler = (sighandler_t)handler;
-
   }
 }
