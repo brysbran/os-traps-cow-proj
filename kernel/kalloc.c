@@ -29,6 +29,21 @@ struct{
   int count[PGROUNDUP(PHYSTOP)>>12]; //2^12 == 4096, aka 4k bytes aka size of page.
 }page_ref;
 
+//function to initialize page reference tracking for COW
+void init_page_ref(){
+  //initialize lock for the page ref sys
+  initlock(&page_ref.lock, "page_ref");
+  //free the lock before modifying
+  acquire(&page_ref.lock);
+
+//loop through every page (4K), set the reference count to 0
+  for(int i = 0; i < (PGROUNDUP(PHYSTOP) >> 12); i++){
+    page_ref.count[i] = 0;
+  }
+  //release the lock
+  release(&page_ref.lock);
+}
+
 void
 kinit()
 {
