@@ -12,7 +12,7 @@ int
 fetchaddr(uint64 addr, uint64 *ip)
 {
   struct proc *p = myproc();
-  if(addr >= p->sz || addr+sizeof(uint64) > p->sz) // both tests needed, in case of overflow
+  if(addr >= p->sz || addr + sizeof(uint64) > p->sz) // both tests needed, in case of overflow
     return -1;
   if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
     return -1;
@@ -129,6 +129,9 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_sigalarm]   sys_sigalarm,
+[SYS_sigreturn]   sys_sigreturn,
+
 };
 
 void
@@ -143,7 +146,7 @@ syscall(void)
     // and store its return value in p->trapframe->a0
     p->trapframe->a0 = syscalls[num]();
   } 
-  else if (num == SYS_sigalarm)
+  /*else if (num == SYS_sigalarm)
   {
     int ticks;
     void (*handler)();
@@ -153,7 +156,7 @@ syscall(void)
       return;
     p->alarm_ticks = ticks;
     p->alarm_handler = handler;
-  }
+  }*/
   else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);

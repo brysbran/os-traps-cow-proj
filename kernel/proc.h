@@ -107,7 +107,9 @@ struct proc {
 
   //trap additions
   int alarm_ticks;
-  int alarm_left;
-  void (*alarm_handler)();
+  int now_ticks;
+  int is_sigalarm;
+  uint64 alarm_handler;
+  struct trapframe *trapframe_copy;
 
 };

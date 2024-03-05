@@ -67,6 +67,8 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+
+
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -79,23 +81,15 @@ usertrap(void)
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
   {
-    if(p->alarm_ticks > 0)
-    {
-      p->alarm_ticks--;
-      if(p->alarm_ticks == 0)
-      {
-        void (*handler)();
-        handler = p->alarm_handler;
-        if(handler != 0)
-        {
-          p->alarm_handler = 0;
-          p->trapframe->a0 = (uint64)handler;
-          p->trapframe->epc += 4;
-        }
-      }
+    p->now_ticks+=1;
+    if(p->alarm_ticks>0&&p->now_ticks>=p->alarm_ticks&&!p->is_sigalarm){
+      p->now_ticks = 0;
+      p->is_sigalarm = 1;
+      *(p->trapframe_copy)=*(p->trapframe);
+      p->trapframe->epc=p->alarm_handler;
     }
+  yield();
   }
-  usertrapret();
 }
 
 //
@@ -105,12 +99,6 @@ void
 usertrapret(void)
 {
   struct proc *p = myproc();
-
-  if(p->trapframe ->a0 != 0)
-  {
-    void (*handler)() = (void (*)())p->trapframe->a0;
-    handler();
-  }
 
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until
