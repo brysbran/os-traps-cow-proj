@@ -146,17 +146,6 @@ syscall(void)
     // and store its return value in p->trapframe->a0
     p->trapframe->a0 = syscalls[num]();
   } 
-  /*else if (num == SYS_sigalarm)
-  {
-    int ticks;
-    void (*handler)();
-    argint(0, &ticks);
-    argstr(1, (void*)&handler, sizeof(handler));
-    if(ticks < 0 ||  handler < 0)
-      return;
-    p->alarm_ticks = ticks;
-    p->alarm_handler = handler;
-  }*/
   else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
