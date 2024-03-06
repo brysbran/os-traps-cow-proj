@@ -371,14 +371,29 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
-  uint64 n, va0, pa0;
+  uint64 n, va0, pa0, flags;
+  pte_t *pte;
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
+    //get the page table entry for the given virtual address
+    pte = walk(pagetable, va0, 0);
+    //extract the flags from the page table entry
+    flags = PTE_FLAGS(*pte);
+
+    //calculate the number of bytes to copy in this iteration
     n = PGSIZE - (dstva - va0);
+    
+    //check if the page is marked cow
+    if(flags & PTE_COW) {
+      //handle the page fault
+      page_fault_handling((void*)va0, pagetable);
+      //update the physical address after handling the page fault
+      pa0 = walkaddr(pagetable, va0);
+    }
     if(n > len)
       n = len;
     memmove((void *)(pa0 + (dstva - va0)), src, n);

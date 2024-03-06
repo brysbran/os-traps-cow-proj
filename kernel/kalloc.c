@@ -30,7 +30,8 @@ struct{
 }page_ref;
 
 //function to initialize page reference tracking for COW
-void init_page_ref(){
+void 
+init_page_ref(){
   //initialize lock for the page ref sys
   initlock(&page_ref.lock, "page_ref");
   //free the lock before modifying
@@ -44,40 +45,65 @@ void init_page_ref(){
   release(&page_ref.lock);
 }
 
-//when COW copies a page for a process, need to update 
-// the reference count from the original page that was being pointed to from
-//both processes.
-void dec_page_ref(){
- acquire(&page_ref.lock);
- //if count is zero, memory mismanaged.
- if(page_ref.count[(uint64) pa >> 12] <= 0){
-  panic("dec_page_ref");
- }
-
-//decrement reference count
- page_ref.count[(uint64)pa >> 12] -= 1;
- release(&page_ref.lock);
-}
 
 //when fork is called, instead of all pages being copied,
 //the original processes pages are shared by Proc A and B, and 
 //we use this reference incrementer to keep track of how many
 //procs are pointing to a given page.
-void inc_page_ref(){
+void 
+inc_page_ref(void *pa){
+  //free the lock before modifying
+  acquire(&page_ref.lock);
+ //if count is zero, memory mismanaged.
+ //indexing the array of references by dividing the 
+ //physical address by 12 (2^12==4096bytes aka size of a page)
+  if(page_ref.count[(uint64)pa >> 12] <= 0){
+    panic("inc_page_ref");
+  }
+  //increment ref count by 1
+  page_ref.count[(uint64)pa >> 12] += 1;
+  //release lock
+   release(&page_ref.lock);
+}
 
+//when COW copies a page for a process, need to update 
+// the reference count from the original page that was being pointed to from
+//both processes.
+void 
+dec_page_ref(void *pa){
+ acquire(&page_ref.lock);
+ //if count is zero, memory mismanaged.
+ //indexing the array of references by dividing the 
+ //physical address by 12 (2^12==4096bytes aka size of a page)
+ if(page_ref.count[(uint64) pa >> 12] <= 0){
+  panic("dec_page_ref");
+ }
+//decrement reference count
+ page_ref.count[(uint64)pa >> 12] -= 1;
+ release(&page_ref.lock);
 }
 
 //return the reference count of a page,
 //includes error checking if memory was mismanaged
 //
-void get_page_ref(){
-
+int 
+get_page_ref(void *pa){
+  //acquire lock
+  acquire(&page_ref.lock);
+  int res = page_ref.count[(uint64)pa>>12]; //storing ref count
+  if(page_ref.count[(uint64)pa>>12]<0){
+    panic("get_page_ref");
+  }
+  release(&page_ref.lock); //release lock
+  return res; //page ref count
 }
 
 
 void
 kinit()
 {
+  //set reference counts of pages to zero initially
+  init_page_ref();
   initlock(&kmem.lock, "kmem");
   freerange(end, (void*)PHYSTOP);
 }
@@ -87,8 +113,10 @@ freerange(void *pa_start, void *pa_end)
 {
   char *p;
   p = (char*)PGROUNDUP((uint64)pa_start);
-  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
+  for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE){
+    inc_page_ref(p);
     kfree(p);
+  }
 }
 
 // Free the page of physical memory pointed at by pa,
@@ -103,6 +131,18 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  acquire(&page_ref.lock);
+  //check if ref count is already zero
+  if(page_ref.count[(uint64)pa>>12]<=0){
+    panic("dec_page_ref");
+  }
+  //decrement ref count
+  page_ref.count[(uint64)pa>>12]-=1;
+  if(page_ref.count[(uint64)pa>>12]>0){
+    release(&page_ref.lock);
+    return;
+  }
+  release(&page_ref.lock);
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -128,7 +168,8 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+  if(r){
+        memset((char*)r, 5, PGSIZE); // fill with junk
+  }
   return (void*)r;
 }
